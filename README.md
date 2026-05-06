@@ -66,7 +66,7 @@ Swipe multiple cards at once based on how fast and far you swipe. A quick swipe 
 
 Or click this button to open the repository page in HACS:
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?repository=simple-swipe-card&category=integration&owner=nutteloost)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?repository=simple-swipe-card&category=plugin&owner=nutteloost)
 
 ### HACS (Manual)
 1. Open HACS
@@ -80,7 +80,7 @@ Or click this button to open the repository page in HACS:
 > As of v2.4.0, Simple Swipe Card works completely offline using Home Assistant's built-in dependencies, with no external CDN requirements.
 
 ### Manual Installation
-1. Download `simple-swipe-card.js` from the latest release or from the `/build` folder in the main repository
+1. Download `simple-swipe-card.js` from the latest release or from the repository root (`/simple-swipe-card.js`)
 2. Copy it to `config/www/simple-swipe-card/simple-swipe-card.js`
 3. Add the following to your configuration.yaml:
    ```yaml
