@@ -1260,15 +1260,10 @@ export class CardBuilder {
       return;
     }
 
-    if (
-      !this.card.cardContainer ||
-      !this.card.isConnected ||
-      this.card.building
-    ) {
+    if (!this.card.cardContainer || !this.card.isConnected) {
       logDebug("INIT", "finishBuildLayout skipped", {
         container: !!this.card.cardContainer,
         connected: this.card.isConnected,
-        building: this.card.building,
       });
       return;
     }
