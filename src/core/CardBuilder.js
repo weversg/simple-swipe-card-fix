@@ -592,6 +592,39 @@ export class CardBuilder {
     return true;
   }
 
+
+  /**
+   * Creates a card element with retry for transient lazy-load failures
+   * @param {Object} helpers - Home Assistant card helpers
+   * @param {Object} cardConfig - Card configuration
+   * @param {number} maxAttempts - Maximum creation attempts
+   * @returns {Promise<HTMLElement>} Created card element
+   * @private
+   */
+  async _createCardElementWithRetry(helpers, cardConfig, maxAttempts = 2) {
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await helpers.createCardElement(cardConfig);
+      } catch (error) {
+        lastError = error;
+        const isLastAttempt = attempt === maxAttempts;
+
+        logDebug(
+          "ERROR",
+          `Card creation attempt ${attempt}/${maxAttempts} failed for ${cardConfig?.type || "unknown"}`,
+          error,
+        );
+
+        if (!isLastAttempt) {
+          await new Promise((resolve) => setTimeout(resolve, 80 * attempt));
+        }
+      }
+    }
+
+    throw lastError;
+  }
   /**
    * Creates a card element and adds it to the slider
    * @param {number} buildTimestamp - Timestamp of the build that initiated this card creation
@@ -617,7 +650,10 @@ export class CardBuilder {
 
     try {
       // Create the card element
-      cardElement = await helpers.createCardElement(cardConfig);
+      cardElement = await this._createCardElementWithRetry(
+        helpers,
+        cardConfig,
+      );
 
       // CRITICAL: Check if this build is still current after async operation
       // This prevents duplicate cards when multiple builds overlap (e.g., in Masonry layouts)
@@ -2267,7 +2303,10 @@ export class CardBuilder {
           return null;
         }
 
-        const cardElement = await helpers.createCardElement(cardInfo.config);
+        const cardElement = await this._createCardElementWithRetry(
+          helpers,
+          cardInfo.config,
+        );
 
         // CRITICAL: Check if this build is still current after async operation
         if (
