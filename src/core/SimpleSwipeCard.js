@@ -519,6 +519,16 @@ export class SimpleSwipeCard extends LitElement {
             this.cardBuilder.build();
           }
         });
+      } else if (
+        this.building &&
+        this.isConnected &&
+        previousCardsCount !== newCardsCount
+      ) {
+        logDebug(
+          "CONFIG",
+          `Cards changed during active build (${previousCardsCount} -> ${newCardsCount}) - queueing rebuild`,
+        );
+        this.cardBuilder.build();
       }
 
       // Fire initial config event
@@ -579,14 +589,11 @@ export class SimpleSwipeCard extends LitElement {
    * @private
    */
   _updateVisibleCardIndicesWithConditional() {
-    if (!this._config?.cards || !this._hass) {
+    if (!this._config?.cards) {
       const wasEmpty = this.visibleCardIndices.length === 0;
       this.visibleCardIndices = [];
       if (!wasEmpty) {
-        logDebug(
-          "VISIBILITY",
-          "No cards or hass available, cleared visible indices",
-        );
+        logDebug("VISIBILITY", "No cards available, cleared visible indices");
       }
       return;
     }
@@ -608,7 +615,7 @@ export class SimpleSwipeCard extends LitElement {
           (card) => card && card.originalIndex === index,
         );
         if (cardData) {
-          conditionalVisible = cardData.conditionallyVisible;
+          conditionalVisible = cardData.conditionallyVisible !== false;
         }
       }
 
@@ -645,14 +652,11 @@ export class SimpleSwipeCard extends LitElement {
    * @private
    */
   _updateVisibleCardIndices() {
-    if (!this._config?.cards || !this._hass) {
+    if (!this._config?.cards) {
       const wasEmpty = this.visibleCardIndices.length === 0;
       this.visibleCardIndices = [];
       if (!wasEmpty) {
-        logDebug(
-          "VISIBILITY",
-          "No cards or hass available, cleared visible indices",
-        );
+        logDebug("VISIBILITY", "No cards available, cleared visible indices");
       }
       return;
     }
@@ -669,7 +673,11 @@ export class SimpleSwipeCard extends LitElement {
 
       // Check conditional card conditions if this is a conditional card
       let conditionalCardVisible = true;
-      if (cardConfig.type === "conditional" && cardConfig.conditions) {
+      if (
+        this._hass &&
+        cardConfig.type === "conditional" &&
+        cardConfig.conditions
+      ) {
         conditionalCardVisible = this._evaluateConditionalCardConditions(
           cardConfig.conditions,
         );
@@ -766,6 +774,14 @@ export class SimpleSwipeCard extends LitElement {
    */
   _evaluateSingleCondition(condition) {
     if (!condition || typeof condition !== "object") {
+      return true;
+    }
+
+    if (!this._hass) {
+      logDebug(
+        "VISIBILITY",
+        "No hass object available for conditional card condition evaluation",
+      );
       return true;
     }
 
@@ -1293,6 +1309,13 @@ export class SimpleSwipeCard extends LitElement {
         "VISIBILITY",
         "Skipping visibility update during build to prevent rebuild flicker",
       );
+      if (hasOurRelevantChanges && this.isConnected) {
+        logDebug(
+          "VISIBILITY",
+          "Relevant hass data changed during build - queueing rebuild",
+        );
+        this.cardBuilder.build();
+      }
       // Always update children - they need to react to entity changes
       if (hasStatesChanged || hasUIChanges) {
         this._updateChildCardsHass(hass);
