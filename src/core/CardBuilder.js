@@ -21,6 +21,39 @@ export class CardBuilder {
   }
 
   /**
+   * Checks whether an async build/layout step still belongs to the active build.
+   * @param {number|null} buildTimestamp
+   * @returns {boolean}
+   * @private
+   */
+  _isCurrentBuild(buildTimestamp) {
+    return (
+      !buildTimestamp ||
+      !this.card._currentBuildTimestamp ||
+      buildTimestamp === this.card._currentBuildTimestamp
+    );
+  }
+
+  /**
+   * Logs and aborts stale async layout work after a newer rebuild has started.
+   * @param {string} step
+   * @param {number|null} buildTimestamp
+   * @returns {boolean} True when the caller should stop.
+   * @private
+   */
+  _abortIfStaleBuild(step, buildTimestamp) {
+    if (this._isCurrentBuild(buildTimestamp)) {
+      return false;
+    }
+
+    logDebug("INIT", `${step} skipped - stale build detected`, {
+      thisBuild: buildTimestamp,
+      currentBuild: this.card._currentBuildTimestamp,
+    });
+    return true;
+  }
+
+  /**
    * Checks if the card is currently in the Lovelace editor
    * @returns {boolean} True if in editor mode
    */
@@ -73,11 +106,12 @@ export class CardBuilder {
     this.card.building = true;
     logDebug("INIT", "Starting build...");
 
-    // CRITICAL: Set build timestamp immediately to prevent stale builds from completing
+    // CRITICAL: Set build token immediately to prevent stale builds from completing
     // This prevents race conditions when disconnect/reconnect happens during build
-    const buildTimestamp = Date.now();
+    const buildTimestamp = (this.card._buildSequence || 0) + 1;
+    this.card._buildSequence = buildTimestamp;
     this.card._currentBuildTimestamp = buildTimestamp;
-    logDebug("INIT", `Build timestamp set: ${buildTimestamp}`);
+    logDebug("INIT", `Build token set: ${buildTimestamp}`);
 
     // CLEAR CACHED CAROUSEL DIMENSIONS TO PREVENT STALE DATA
     this.card._carouselCardWidth = null;
@@ -1248,15 +1282,7 @@ export class CardBuilder {
    */
   async finishBuildLayout(buildTimestamp = null) {
     // CRITICAL: Check if this is a stale build
-    if (
-      buildTimestamp &&
-      this.card._currentBuildTimestamp &&
-      buildTimestamp !== this.card._currentBuildTimestamp
-    ) {
-      logDebug("INIT", "finishBuildLayout skipped - stale build detected", {
-        thisBuild: buildTimestamp,
-        currentBuild: this.card._currentBuildTimestamp,
-      });
+    if (this._abortIfStaleBuild("finishBuildLayout", buildTimestamp)) {
       return;
     }
 
@@ -1271,6 +1297,15 @@ export class CardBuilder {
 
     // ENHANCED: Wait for stable dimensions with validation
     const dimensions = await this._waitForStableDimensions();
+
+    if (
+      this._abortIfStaleBuild(
+        "finishBuildLayout after dimension wait",
+        buildTimestamp,
+      )
+    ) {
+      return;
+    }
 
     if (!dimensions) {
       // Failed to get stable dimensions - use fallback but continue
@@ -1428,7 +1463,13 @@ export class CardBuilder {
       // Wait for CSS variable to actually change instead of fixed timeout
       if (viewMode === "carousel") {
         this._waitForCarouselStyleApplication().then(() => {
-          if (this.card.isConnected) {
+          if (
+            this.card.isConnected &&
+            !this._abortIfStaleBuild(
+              "carousel style recalculation",
+              buildTimestamp,
+            )
+          ) {
             this.recalculateCarouselLayout();
           }
         });
@@ -1443,10 +1484,19 @@ export class CardBuilder {
     // Give pagination one frame to render
     await new Promise((resolve) => requestAnimationFrame(resolve));
 
+    if (
+      this._abortIfStaleBuild(
+        "finishBuildLayout before fade-in",
+        buildTimestamp,
+      )
+    ) {
+      return;
+    }
+
     // Setup dropdown detection for z-index elevation
     this.card._setupDropdownDetection();
 
-    await this._fadeInAfterLayoutSettles();
+    await this._fadeInAfterLayoutSettles(buildTimestamp);
   }
 
   /**
@@ -1628,8 +1678,12 @@ export class CardBuilder {
    * @returns {Promise<void>}
    * @private
    */
-  async _fadeInAfterLayoutSettles() {
+  async _fadeInAfterLayoutSettles(buildTimestamp = null) {
     await new Promise((resolve) => setTimeout(resolve, 50)); // Reduced from 150ms to 50ms
+
+    if (this._abortIfStaleBuild("fade-in", buildTimestamp)) {
+      return;
+    }
 
     if (
       !this.card.isConnected ||
@@ -1685,6 +1739,10 @@ export class CardBuilder {
       }
     }
 
+    if (this._abortIfStaleBuild("fade-in before reveal", buildTimestamp)) {
+      return;
+    }
+
     // Fade in smoothly (slightly faster animation)
     logDebug("INIT", "Fading in slider");
     this.card.sliderElement.style.transition = "opacity 0.15s ease-in";
@@ -1692,7 +1750,10 @@ export class CardBuilder {
 
     // Clean up transition after fade completes
     setTimeout(() => {
-      if (this.card.sliderElement) {
+      if (
+        this.card.sliderElement &&
+        !this._abortIfStaleBuild("fade-in cleanup", buildTimestamp)
+      ) {
         this.card.sliderElement.style.transition = "";
         logDebug("INIT", "Fade-in complete, card fully initialized");
 
